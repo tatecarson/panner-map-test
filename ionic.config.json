@@ -1,0 +1,7 @@
+{
+  "name": "chimes-ionic",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react"
+}
