@@ -89,11 +89,11 @@ export const magicOpeningChord = Mod.lookup(
   wtTransposed
 );
 
-const gamelanChord = Mod.lookup([3, 6, 9, 13], wtTransposed);
-let tamiarDreamChord = Mod.lookup([8, 11, 4, 6, 8, 11, 16, 18], wtTransposed);
+export const gamelanChord = Mod.lookup([3, 6, 9, 13], wtTransposed);
+export let tamiarDreamChord = Mod.lookup([8, 11, 4, 6, 8, 11, 16, 18], wtTransposed);
 tamiarDreamChord[0] = Nexus.note(8 - 24);
 tamiarDreamChord[1] = Nexus.note(11 - 24);
-let lostAncestralLakeRegionChord = Mod.lookup(
+export let lostAncestralLakeRegionChord = Mod.lookup(
   [4, 8, 11, 3, 4, 6],
   wtTransposed
 );
@@ -101,14 +101,15 @@ lostAncestralLakeRegionChord[0] = Nexus.note(4 - 24);
 lostAncestralLakeRegionChord[1] = Nexus.note(8 - 24);
 lostAncestralLakeRegionChord[2] = Nexus.note(11 - 24);
 
-const theBrookChord = Mod.lookup(
+export const theBrookChord = Mod.lookup(
   [7, 9, 12, 14, 16, 19, 21, 26, 28, 33],
   wtTransposed
 );
-const thePoolChord = Mod.lookup([0, 2, 3, 7, 9, 12, 14, 19], wtTransposed);
+export const thePoolChord = Mod.lookup([0, 2, 3, 7, 9, 12, 14, 19], wtTransposed);
 
 // map the notes array to the range of the current chord
-export let currentChord = theBrookChord;
+
+let currentChord = gamelanChord;
 notes = Util.map(
   notes,
   Stat.min(notes),
@@ -116,7 +117,6 @@ notes = Util.map(
   Stat.min(currentChord),
   Stat.max(currentChord)
 );
-// console.log("🚀 ~ file: script.js ~ line 117 ~ notes", notes);
 
 let ev1prob = Util.map(fib, Stat.min(fib), Stat.max(fib), 0.7, 1);
 let ev2prob = Util.map(fib, Stat.min(fib), Stat.max(fib), 0.8, 1);
@@ -149,3 +149,7 @@ export const seq2 = {
   evProbseq: ev2probSeq,
   vSeq,
 };
+
+export const chords = [
+  gamelanChord, theBrookChord, openingChord, lostAncestralLakeRegionChord, magicChord,thePoolChord, tamiarDreamChord, magicOpeningChord  
+]
