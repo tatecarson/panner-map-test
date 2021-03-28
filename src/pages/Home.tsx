@@ -3,15 +3,17 @@ import getCompassDirection from 'geolib/es/getCompassDirection';
 import getDistance from 'geolib/es/getDistance';
 import { GeolocateControl } from "mapbox-gl";
 import Nexus from "nexusui";
+import Srl from "total-serialism";
 import { useEffect, useRef, useState } from 'react';
 import ReactMapboxGl, { Feature, Layer } from 'react-mapbox-gl';
 import * as Survey from "survey-react";
-import { Freeverb, Listener, Loop, Panner3D, Sampler, Transport } from "tone";
+import { Freeverb, Listener, Loop, Panner3D, Sampler, Transport, start } from "tone";
 
-import { currentChord, seq1, seq2 } from '../components/sampler/chords'
+import { seq1, seq2,   chords, theBrookChord, thePoolChord, gamelanChord
+} from '../components/sampler/chords'
 import { json } from "../data/survey_json";
 import { init as customWidget } from '../utils/microphone';
-import { filterMinMax, findClosest } from '../utils/music'
+import { filterMinMax, findClosest, mapNotes } from '../utils/music'
 
 import './Home.css';
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -21,18 +23,8 @@ Survey.StylesManager.applyTheme("stone");
 customWidget(Survey)
 const surveyData: number[] = []
 
-const start = () => {
-  if (Transport.state !== "started") {
-    console.log("started");
-    // Tone.start()
-    Transport.start("+0.1");
-    Transport.bpm.value = 150;
-  }
-}
+const Util = Srl.Utility;
 
-const stop = () => {
-  Transport.stop();
-}
 
 interface ILocation {
   lat: number,
@@ -62,16 +54,45 @@ console.log("🚀 ~ file: Home.tsx ~ line 59 ~  geolocation", geolocation)
 
 const Home: React.FC = () => {
   const [isLoaded, setLoaded] = useState(false);
+  const [chord, setChord] = useState(gamelanChord)
   const sampler: any = useRef(null);
   const sampler2: any = useRef(null)
+  const event1:any = useRef(null)
   const reverb: any = useRef(null)
   const panner: any = useRef(null)
   const [location, setLocation] = useState(false)
   const [featureLocation, setFeatureLocation] = useState([-91.1597, 30.4232])
   const survey = new Survey.Model(json)
+ 
+
+const startTransport = async () => {
+  if (Transport.state !== "started") {
+    console.log("started");
+    await start()
+    Transport.start("+0.1");
+    Transport.bpm.value = 150;
+    event1.current.start()
+    // event2.current.start()
+  }
+}
+
+const stop = () => {
+ 
+  event1.current.stop()
+  Transport.stop();
+}
+
 
   const handleOnComplete = async (result: any) => {
-    console.log(result.data)
+    const pickChordbyAverage = Math.round(Nexus.average(Object.values(result.data)))
+ 
+    console.log('wt chord: ',  chords[pickChordbyAverage])
+    console.log("gen notes: ",  seq1.freqSeq.values )
+    // const mappedNotes = mapNotes(seq1.freqSeq.values, chords[pickChordbyAverage])
+    // console.log("🚀 ~ file: Home.tsx ~ line 85 ~ handleOnComplete ~ mappedNotes", mappedNotes)
+    
+    // FIXME: this is not updating until rerender 
+    setChord(chords[pickChordbyAverage])
     surveyData.push(result.data)
   }
 
@@ -135,15 +156,20 @@ const Home: React.FC = () => {
     }).connect(reverb.current);
     sampler2.current.attack = 0.5;
 
+  }, [])
 
-    let event1 = new Loop((time) => {
-      // console.log(surveyData)
+  // FIXME: now having an issue with sticking around loops because of
+  // tonejs and react
+  useEffect(() => {
+    event1.current = new Loop((time) => {
       let freq = seq1.freqSeq.next();
 
       // round to a wt-tuning
-      let transFreq = findClosest(currentChord, freq);
+      // console.log("🚀 ~ file: Home.tsx ~ line 165 ~ event1 ~ chord", chord)
+      console.log('chord in event1: ', chord)
+      let transFreq = findClosest(chord, freq);
 
-      // console.log(`freq: ${freq} transFreq: ${transFreq}`);
+      console.log(`freq: ${freq} transFreq: ${transFreq}`);
 
       if (seq1.rSeq.next() > 2) {
         sampler.current.attack = Nexus.pick(0.5, 1, 1.5, 2, 2.5, 3);
@@ -155,38 +181,36 @@ const Home: React.FC = () => {
       // divide here so it doesn't break it
       sampler.current.triggerAttackRelease(transFreq / 2, seq1.durSeq.next(), time, seq1.vSeq.next());
 
-      event1.interval = seq1.rSeq.next();
+      // event1.interval = seq1.rSeq.next();
       // console.log("🚀 ~ file: Home.tsx ~ line 75 ~ event1 ~ seq1.rSeq.next()", seq1.rSeq.next())
 
-      event1.probability = seq1.evProbseq.next();
-    }).start();
+      // event1.probability = seq1.evProbseq.next();
+    })
 
 
-    let event2 = new Loop((time) => {
-      let freq = seq2.freqSeq.next();
-      let transFreq = findClosest(currentChord, freq);
+    // let event2 = new Loop((time) => {
+    //   let freq = seq2.freqSeq.next();
 
-      // console.log(`freq: ${freq} transFreq: ${transFreq}`);
+    //   let transFreq = findClosest(chord, freq);
 
-      if (seq2.rSeq.next() > 2) {
-        sampler2.current.attack = Nexus.pick(0.5, 1, 1.5, 2, 2.5, 3);
-        sampler2.current.release = Nexus.pick(1, 1.5, 2, 2.5, 3);
-      } else {
-        sampler2.current.release = 1;
-      }
-      sampler2.current.triggerAttackRelease(transFreq, seq2.durSeq.next(), time, seq2.vSeq.next());
+    //   // console.log(`freq: ${freq} transFreq: ${transFreq}`);
 
-      event2.interval = seq2.rSeq.next();
+    //   if (seq2.rSeq.next() > 2) {
+    //     sampler2.current.attack = Nexus.pick(0.5, 1, 1.5, 2, 2.5, 3);
+    //     sampler2.current.release = Nexus.pick(1, 1.5, 2, 2.5, 3);
+    //   } else {
+    //     sampler2.current.release = 1;
+    //   }
+    //   sampler2.current.triggerAttackRelease(transFreq, seq2.durSeq.next(), time, seq2.vSeq.next());
 
-      event2.probability = seq2.evProbseq.next();
-    }).start();
+    //   event2.interval = seq2.rSeq.next();
 
-    event1.humanize = true;
+    //   event2.probability = seq2.evProbseq.next();
+    // }).start();
 
-    event2.humanize = true;
-    event1.probability = 1;
-
-  }, [])
+    event1.current.humanize = true;
+    // event2.humanize = true;
+  }, [chord])
   const [zoom, setZoom] = useState(15)
   return (
     <IonPage id="home-page">
@@ -207,10 +231,9 @@ const Home: React.FC = () => {
         </IonHeader>
 
 
-        <IonButton onClick={start} disabled={!isLoaded}>Start</IonButton>
+        <IonButton onClick={startTransport} disabled={!isLoaded}>Start</IonButton>
         <IonButton onClick={stop}>Stop</IonButton>
         <IonButton onClick={retake}>Retake survey</IonButton>
-        {/* <Map height="500px" location={geolocation} ></Map> */}
         <MapDisplay
           // eslint-disable-next-line
           style="mapbox://styles/mapbox/streets-v8"

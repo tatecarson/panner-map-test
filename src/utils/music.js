@@ -50,3 +50,12 @@ export const findClosest = (arr, num) => {
 
   return arr[creds.index];
 };
+
+export const mapNotes = (input, end) => {
+  return Util.map(input, 
+    Stat.min(input),
+    Stat.max(input),
+    Stat.min(end),
+    Stat.max(end)
+  );
+}
