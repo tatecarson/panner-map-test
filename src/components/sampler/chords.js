@@ -152,4 +152,4 @@ export const seq2 = {
 
 export const chords = [
   gamelanChord, theBrookChord, openingChord, lostAncestralLakeRegionChord, magicChord,thePoolChord, tamiarDreamChord, magicOpeningChord  
-]
+].reverse()

@@ -22,9 +22,9 @@ import "survey-react/survey.css";
 Survey.StylesManager.applyTheme("stone");
 customWidget(Survey)
 const surveyData: number[] = []
-
 const Util = Srl.Utility;
-
+const Mod = Srl.Mod; 
+const Stat = Srl.Statistic; 
 
 interface ILocation {
   lat: number,
@@ -58,6 +58,7 @@ const Home: React.FC = () => {
   const sampler: any = useRef(null);
   const sampler2: any = useRef(null)
   const event1:any = useRef(null)
+  const event2:any = useRef(null)
   const reverb: any = useRef(null)
   const panner: any = useRef(null)
   const [location, setLocation] = useState(false)
@@ -72,27 +73,47 @@ const startTransport = async () => {
     Transport.start("+0.1");
     Transport.bpm.value = 150;
     event1.current.start()
-    // event2.current.start()
+    event2.current.start()
   }
 }
 
 const stop = () => {
- 
   event1.current.stop()
+  event2.current.stop()
   Transport.stop();
 }
 
 
   const handleOnComplete = async (result: any) => {
-    const pickChordbyAverage = Math.round(Nexus.average(Object.values(result.data)))
- 
-    console.log('wt chord: ',  chords[pickChordbyAverage])
-    console.log("gen notes: ",  seq1.freqSeq.values )
-    // const mappedNotes = mapNotes(seq1.freqSeq.values, chords[pickChordbyAverage])
-    // console.log("🚀 ~ file: Home.tsx ~ line 85 ~ handleOnComplete ~ mappedNotes", mappedNotes)
-    
-    // FIXME: this is not updating until rerender 
+    const surveyAverage = Nexus.average(Object.values(result.data)); 
+    // set new chord
+    const pickChordbyAverage = Math.round(surveyAverage)
     setChord(chords[pickChordbyAverage])
+
+    const density = Util.map(surveyAverage, 
+      1,
+      7,
+      1,
+      0.04
+    );
+    console.log("🚀 ~ file: Home.tsx ~ line 100 ~ handleOnComplete ~ density", density)
+    
+    event1.current.probability = density 
+    event2.current.probability = density
+
+    const durations = Util.map(
+        surveyAverage,
+        1,
+        7,
+        0.2,
+        1.4
+      );
+    
+    seq1.durSeq.values = Util.mul(seq1.durSeq.values, [durations])
+    seq2.durSeq.values = Util.mul(seq2.durSeq.values, [durations])
+
+    // TODO: control the wind 
+
     surveyData.push(result.data)
   }
 
@@ -156,17 +177,19 @@ const stop = () => {
     }).connect(reverb.current);
     sampler2.current.attack = 0.5;
 
+    // TODO: add the wind
+
   }, [])
 
-  // FIXME: now having an issue with sticking around loops because of
-  // tonejs and react
+  // NOTE: this is in a separate useEffect so it can respond to the chord change
+  // without refreshing the samples above 
   useEffect(() => {
     event1.current = new Loop((time) => {
       let freq = seq1.freqSeq.next();
 
       // round to a wt-tuning
       // console.log("🚀 ~ file: Home.tsx ~ line 165 ~ event1 ~ chord", chord)
-      console.log('chord in event1: ', chord)
+      // console.log('chord in event1: ', chord)
       let transFreq = findClosest(chord, freq);
 
       console.log(`freq: ${freq} transFreq: ${transFreq}`);
@@ -181,36 +204,37 @@ const stop = () => {
       // divide here so it doesn't break it
       sampler.current.triggerAttackRelease(transFreq / 2, seq1.durSeq.next(), time, seq1.vSeq.next());
 
-      // event1.interval = seq1.rSeq.next();
-      // console.log("🚀 ~ file: Home.tsx ~ line 75 ~ event1 ~ seq1.rSeq.next()", seq1.rSeq.next())
+      event1.current.interval = seq1.rSeq.next();
+      console.log("🚀 ~ file: Home.tsx ~ line 75 ~ event1 ~ seq1.rSeq.next()", seq1.rSeq.next())
 
-      // event1.probability = seq1.evProbseq.next();
+      // event1.current.probability = seq1.evProbseq.next();
     })
 
+    
+    event2.current = new Loop((time) => {
+      let freq = seq2.freqSeq.next();
 
-    // let event2 = new Loop((time) => {
-    //   let freq = seq2.freqSeq.next();
+      let transFreq = findClosest(chord, freq);
 
-    //   let transFreq = findClosest(chord, freq);
+      // console.log(`freq: ${freq} transFreq: ${transFreq}`);
 
-    //   // console.log(`freq: ${freq} transFreq: ${transFreq}`);
+      if (seq2.rSeq.next() > 2) {
+        sampler2.current.attack = Nexus.pick(0.5, 1, 1.5, 2, 2.5, 3);
+        sampler2.current.release = Nexus.pick(1, 1.5, 2, 2.5, 3);
+      } else {
+        sampler2.current.release = 1;
+      }
+      sampler2.current.triggerAttackRelease(transFreq, seq2.durSeq.next(), time, seq2.vSeq.next());
 
-    //   if (seq2.rSeq.next() > 2) {
-    //     sampler2.current.attack = Nexus.pick(0.5, 1, 1.5, 2, 2.5, 3);
-    //     sampler2.current.release = Nexus.pick(1, 1.5, 2, 2.5, 3);
-    //   } else {
-    //     sampler2.current.release = 1;
-    //   }
-    //   sampler2.current.triggerAttackRelease(transFreq, seq2.durSeq.next(), time, seq2.vSeq.next());
+      event2.current.interval = seq2.rSeq.next();
 
-    //   event2.interval = seq2.rSeq.next();
-
-    //   event2.probability = seq2.evProbseq.next();
-    // }).start();
+      // event2.current.probability = seq2.evProbseq.next();
+    })
 
     event1.current.humanize = true;
-    // event2.humanize = true;
+    event2.current.humanize = true;
   }, [chord])
+  
   const [zoom, setZoom] = useState(15)
   return (
     <IonPage id="home-page">
