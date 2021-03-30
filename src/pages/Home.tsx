@@ -1,4 +1,4 @@
-import { IonButton, IonContent, IonHeader, IonPage, IonTitle, IonToolbar, useIonViewDidEnter } from '@ionic/react';
+import { IonButton, IonContent, IonHeader, IonPage, IonTitle, IonToolbar } from '@ionic/react';
 import getCompassDirection from 'geolib/es/getCompassDirection';
 import getDistance from 'geolib/es/getDistance';
 import { GeolocateControl } from "mapbox-gl";
@@ -7,13 +7,14 @@ import Srl from "total-serialism";
 import { useEffect, useRef, useState } from 'react';
 import ReactMapboxGl, { Feature, Layer } from 'react-mapbox-gl';
 import * as Survey from "survey-react";
-import { Freeverb, Listener, Loop, Panner3D, Sampler, Transport, start } from "tone";
+import { Freeverb, Listener, Loop, Panner3D, Sampler, NoiseSynth, Transport, start, Filter, PitchShift } from "tone";
 
-import { seq1, seq2,   chords, theBrookChord, thePoolChord, gamelanChord
+import {
+  seq1, seq2, chords, gamelanChord
 } from '../components/sampler/chords'
 import { json } from "../data/survey_json";
 import { init as customWidget } from '../utils/microphone';
-import { filterMinMax, findClosest, mapNotes } from '../utils/music'
+import { findClosest } from '../utils/music'
 
 import './Home.css';
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -23,8 +24,8 @@ Survey.StylesManager.applyTheme("stone");
 customWidget(Survey)
 const surveyData: number[] = []
 const Util = Srl.Utility;
-const Mod = Srl.Mod; 
-const Stat = Srl.Statistic; 
+const Mod = Srl.Mod;
+const Stat = Srl.Statistic;
 
 interface ILocation {
   lat: number,
@@ -55,64 +56,71 @@ console.log("🚀 ~ file: Home.tsx ~ line 59 ~  geolocation", geolocation)
 const Home: React.FC = () => {
   const [isLoaded, setLoaded] = useState(false);
   const [chord, setChord] = useState(gamelanChord)
+  const [average, setAverage] = useState(1)
   const sampler: any = useRef(null);
   const sampler2: any = useRef(null)
-  const event1:any = useRef(null)
-  const event2:any = useRef(null)
+  const wind: any = useRef(null);
+  const event1: any = useRef(null)
+  const event2: any = useRef(null)
   const reverb: any = useRef(null)
   const panner: any = useRef(null)
+  const highpass: any = useRef(null)
+  const lowpass: any = useRef(null)
+  const bandpass: any = useRef(null)
+  const pitchShift: any = useRef(null)
   const [location, setLocation] = useState(false)
   const [featureLocation, setFeatureLocation] = useState([-91.1597, 30.4232])
   const survey = new Survey.Model(json)
- 
 
-const startTransport = async () => {
-  if (Transport.state !== "started") {
-    console.log("started");
-    await start()
-    Transport.start("+0.1");
-    Transport.bpm.value = 150;
-    event1.current.start()
-    event2.current.start()
+
+  const startTransport = async () => {
+    if (Transport.state !== "started") {
+      console.log("started");
+      await start()
+      Transport.start("+0.1");
+      Transport.bpm.value = 150;
+      event1.current.start()
+      event2.current.start()
+    }
   }
-}
 
-const stop = () => {
-  event1.current.stop()
-  event2.current.stop()
-  Transport.stop();
-}
+  const stop = () => {
+    event1.current.stop()
+    event2.current.stop()
+    Transport.stop();
+  }
 
 
   const handleOnComplete = async (result: any) => {
-    const surveyAverage = Nexus.average(Object.values(result.data)); 
+    const surveyAverage = Nexus.average(Object.values(result.data));
+    setAverage(surveyAverage)
     // set new chord
     const pickChordbyAverage = Math.round(surveyAverage)
     setChord(chords[pickChordbyAverage])
-
-    const density = Util.map(surveyAverage, 
+    const density = Util.map(surveyAverage,
       1,
       7,
       1,
       0.04
     );
     console.log("🚀 ~ file: Home.tsx ~ line 100 ~ handleOnComplete ~ density", density)
-    
-    event1.current.probability = density 
+
+    event1.current.probability = density
     event2.current.probability = density
 
     const durations = Util.map(
-        surveyAverage,
-        1,
-        7,
-        0.2,
-        1.4
-      );
-    
+      surveyAverage,
+      1,
+      7,
+      0.2,
+      1.4
+    );
+
     seq1.durSeq.values = Util.mul(seq1.durSeq.values, [durations])
     seq2.durSeq.values = Util.mul(seq2.durSeq.values, [durations])
 
     // TODO: control the wind 
+    // 
 
     surveyData.push(result.data)
   }
@@ -177,13 +185,47 @@ const stop = () => {
     }).connect(reverb.current);
     sampler2.current.attack = 0.5;
 
-    // TODO: add the wind
+    highpass.current = new Filter(1800, 'highpass').toDestination();
+    lowpass.current = new Filter(500, "lowpass")
+
+    bandpass.current = new Filter()
+    bandpass.current.set({
+      cutoff: 2000,
+      type: "peaking",
+      gain: 25,
+      Q: 21
+    })
+    pitchShift.current = new PitchShift({
+      "pitch": 5,
+      "windowSize": 0.04,
+      "delayTime": 0.03,
+      "feedback": 0.5,
+      "wet": 0.5
+    })
+
+    wind.current = new NoiseSynth({
+      "noise": {
+        "type": "pink",
+        "playbackRate": 0.1,
+        "volume": -10
+      },
+      "envelope": {
+        "attack": 2,
+        "decay": 2,
+        "sustain": 0.5,
+        "release": 3
+      }
+    }).chain(pitchShift.current, lowpass.current, highpass.current, reverb.current)
+
+
 
   }, [])
 
   // NOTE: this is in a separate useEffect so it can respond to the chord change
   // without refreshing the samples above 
   useEffect(() => {
+    console.log(seq1.rSeq.values)
+    let windTriggered = false; 
     event1.current = new Loop((time) => {
       let freq = seq1.freqSeq.next();
 
@@ -200,9 +242,43 @@ const stop = () => {
       } else {
         sampler.current.release = 1;
       }
+      
+      
+      // Trigger the wind attack when the interval is fast but only once until the next release
+      if(event1.current.interval < 3 && !windTriggered) {
+        // fast intervals
+        wind.current.triggerAttack()
+        console.log('wind attack')
+
+        highpass.current.frequency.rampTo(
+          Math.random() * 4000 + 500,
+          Nexus.pick([1, 3, 4, 6])
+        );
+        lowpass.current.frequency.rampTo(
+          Math.random() * 4000 + 500,
+          Nexus.pick([1, 3, 4, 10])
+        );
+        windTriggered = true; 
+      } else if(event1.current.interval > 3) {
+        // slower intervals 
+        wind.current.triggerRelease()
+        console.log('wind release')
+        windTriggered = false 
+      }
+      wind.current.volume.value = Nexus.scale(average, 1, 7, -3, -15)
+
+      // wind distortion 
+      pitchShift.current.wet.value = Nexus.scale(average, 1, 7, 1, 0)
+      pitchShift.current.pitch = Nexus.scale(average, 1, 7, 7, 1)
+
+      // this should change even if the wind hasn't released
+      pitchShift.current.windowSize = Nexus.pick(0.1, 0.04, 0.05)
+      pitchShift.current.feedback.rampTo(Nexus.pick(0.2, 0.5), event1.current.interval)
+
 
       // divide here so it doesn't break it
-      sampler.current.triggerAttackRelease(transFreq / 2, seq1.durSeq.next(), time, seq1.vSeq.next());
+      sampler.current.triggerAttackRelease(transFreq / 2, seq1.durSeq.next(), time + wind.current.envelope.attack, seq1.vSeq.next());
+
 
       event1.current.interval = seq1.rSeq.next();
       console.log("🚀 ~ file: Home.tsx ~ line 75 ~ event1 ~ seq1.rSeq.next()", seq1.rSeq.next())
@@ -210,7 +286,7 @@ const stop = () => {
       // event1.current.probability = seq1.evProbseq.next();
     })
 
-    
+
     event2.current = new Loop((time) => {
       let freq = seq2.freqSeq.next();
 
@@ -234,7 +310,7 @@ const stop = () => {
     event1.current.humanize = true;
     event2.current.humanize = true;
   }, [chord])
-  
+
   const [zoom, setZoom] = useState(15)
   return (
     <IonPage id="home-page">
