@@ -7,7 +7,7 @@ import Srl from "total-serialism";
 import { useEffect, useRef, useState } from 'react';
 import ReactMapboxGl, { Feature, Layer } from 'react-mapbox-gl';
 import * as Survey from "survey-react";
-import { Freeverb, Listener, Loop, Panner3D, Sampler, NoiseSynth, Transport, start, Filter, PitchShift } from "tone";
+import { Freeverb, Listener, Loop, Panner3D, Sampler, NoiseSynth, Transport, start, Filter, PitchShift, now } from "tone";
 
 import {
   seq1, seq2, chords, gamelanChord
@@ -66,6 +66,8 @@ const Home: React.FC = () => {
   const panner: any = useRef(null)
   const highpass: any = useRef(null)
   const lowpass: any = useRef(null)
+  const highpass2: any = useRef(null)
+  const lowpass2: any = useRef(null)
   const bandpass: any = useRef(null)
   const pitchShift: any = useRef(null)
   const [location, setLocation] = useState(false)
@@ -80,7 +82,7 @@ const Home: React.FC = () => {
       Transport.start("+0.1");
       Transport.bpm.value = 150;
       event1.current.start()
-      event2.current.start()
+      // event2.current.start()
     }
   }
 
@@ -93,6 +95,7 @@ const Home: React.FC = () => {
 
   const handleOnComplete = async (result: any) => {
     const surveyAverage = Nexus.average(Object.values(result.data));
+   
     setAverage(surveyAverage)
     // set new chord
     const pickChordbyAverage = Math.round(surveyAverage)
@@ -103,8 +106,6 @@ const Home: React.FC = () => {
       1,
       0.04
     );
-    console.log("🚀 ~ file: Home.tsx ~ line 100 ~ handleOnComplete ~ density", density)
-
     event1.current.probability = density
     event2.current.probability = density
 
@@ -118,9 +119,6 @@ const Home: React.FC = () => {
 
     seq1.durSeq.values = Util.mul(seq1.durSeq.values, [durations])
     seq2.durSeq.values = Util.mul(seq2.durSeq.values, [durations])
-
-    // TODO: control the wind 
-    // 
 
     surveyData.push(result.data)
   }
@@ -188,6 +186,10 @@ const Home: React.FC = () => {
     highpass.current = new Filter(1800, 'highpass').toDestination();
     lowpass.current = new Filter(500, "lowpass")
 
+    highpass2.current = new Filter(1800, 'highpass').toDestination();
+    lowpass2.current = new Filter(500, "lowpass")
+
+
     bandpass.current = new Filter()
     bandpass.current.set({
       cutoff: 2000,
@@ -217,15 +219,22 @@ const Home: React.FC = () => {
       }
     }).chain(pitchShift.current, lowpass.current, highpass.current, reverb.current)
 
+    wind.current.chain(pitchShift.current, lowpass2.current, highpass2.current, reverb.current)
 
+    highpass2.current.gain.value = -10
 
   }, [])
 
   // NOTE: this is in a separate useEffect so it can respond to the chord change
   // without refreshing the samples above 
+  // TODO: fix issue with jumping values, the problem is NOT retriggering the ENV
+  // TODO: add other ruslting samples and attach to some groups of things like quiet tranquil calm 
+  // use a long sample of leaves blowing and fade in and out 
+  // chirping frogs, bug or bee sounds 
+  // maybe water sounds? 
   useEffect(() => {
     console.log(seq1.rSeq.values)
-    let windTriggered = false; 
+    let windTriggered = false;
     event1.current = new Loop((time) => {
       let freq = seq1.freqSeq.next();
 
@@ -234,7 +243,7 @@ const Home: React.FC = () => {
       // console.log('chord in event1: ', chord)
       let transFreq = findClosest(chord, freq);
 
-      console.log(`freq: ${freq} transFreq: ${transFreq}`);
+      // console.log(`freq: ${freq} transFreq: ${transFreq}`);
 
       if (seq1.rSeq.next() > 2) {
         sampler.current.attack = Nexus.pick(0.5, 1, 1.5, 2, 2.5, 3);
@@ -242,30 +251,37 @@ const Home: React.FC = () => {
       } else {
         sampler.current.release = 1;
       }
-      
-      
-      // Trigger the wind attack when the interval is fast but only once until the next release
-      if(event1.current.interval < 3 && !windTriggered) {
-        // fast intervals
-        wind.current.triggerAttack()
-        console.log('wind attack')
 
-        highpass.current.frequency.rampTo(
-          Math.random() * 4000 + 500,
-          Nexus.pick([1, 3, 4, 6])
-        );
-        lowpass.current.frequency.rampTo(
-          Math.random() * 4000 + 500,
-          Nexus.pick([1, 3, 4, 10])
-        );
-        windTriggered = true; 
-      } else if(event1.current.interval > 3) {
+
+      // Trigger the wind attack when the interval is fast but only once until the next release
+      if (event1.current.interval < 3 && !windTriggered) {
+        // fast intervals
+        console.log("value", wind.current.envelope.getValueAtTime(now()))
+        if (wind.current.envelope.getValueAtTime(now()) === 0) {
+          wind.current.triggerAttack()
+          console.log('wind trigger attack 1')
+        }
+
+        // NOTE: this is jumping straight to another value 
+        // THISIS IT FIX THIS!! 
+        // highpass.current.frequency.rampTo(
+        //   Math.random() * 4000 + 500,
+        //   Nexus.pick([1, 3, 4, 6])
+        // );
+        // console.log("🚀 ~ file: Home.tsx ~ line 411 ~ event1.current=newLoop ~ highpass.current.frequency.", highpass.current.frequency.value)
+
+        // lowpass.current.frequency.rampTo(
+        //   Math.random() * 4000 + 500,
+        //   Nexus.pick([1, 3, 4, 10])
+        // );
+        windTriggered = true;
+      } else if (event1.current.interval > 3) {
         // slower intervals 
-        wind.current.triggerRelease()
+        wind.current.volume.rampTo(-10, 2)
         console.log('wind release')
-        windTriggered = false 
+        windTriggered = false;
       }
-      wind.current.volume.value = Nexus.scale(average, 1, 7, -3, -15)
+      wind.current.volume.value = Nexus.scale(average, 1, 7, -3, -7)
 
       // wind distortion 
       pitchShift.current.wet.value = Nexus.scale(average, 1, 7, 1, 0)
@@ -281,9 +297,7 @@ const Home: React.FC = () => {
 
 
       event1.current.interval = seq1.rSeq.next();
-      console.log("🚀 ~ file: Home.tsx ~ line 75 ~ event1 ~ seq1.rSeq.next()", seq1.rSeq.next())
-
-      // event1.current.probability = seq1.evProbseq.next();
+      // console.log("🚀 ~ file: Home.tsx ~ line 75 ~ event1 ~ seq1.rSeq.next()", seq1.rSeq.next())
     })
 
 
@@ -300,16 +314,41 @@ const Home: React.FC = () => {
       } else {
         sampler2.current.release = 1;
       }
+
+      // turn down the second signal 
+
+      if (event1.current.interval < 3 && !windTriggered) {
+        // fast intervals
+
+
+        console.log('wind attack event 2')
+
+        highpass2.current.frequency.rampTo(
+          Math.random() * 4000 + 500,
+          Nexus.pick([1, 3, 4, 6])
+        );
+        lowpass2.current.frequency.rampTo(
+          Math.random() * 4000 + 500,
+          Nexus.pick([1, 3, 4, 10])
+        );
+        windTriggered = true;
+      } else if (event1.current.interval > 3) {
+        // slower intervals 
+        // wind.current.volume.rampTo(-10, 2)
+        console.log('wind release')
+        windTriggered = false
+      }
+
       sampler2.current.triggerAttackRelease(transFreq, seq2.durSeq.next(), time, seq2.vSeq.next());
 
       event2.current.interval = seq2.rSeq.next();
-
-      // event2.current.probability = seq2.evProbseq.next();
     })
+
+
 
     event1.current.humanize = true;
     event2.current.humanize = true;
-  }, [chord])
+  }, [chord, average])
 
   const [zoom, setZoom] = useState(15)
   return (
@@ -372,6 +411,7 @@ const Home: React.FC = () => {
               // "S" | "W" | "NNE" | "NE" | "ENE" | "E" | "ESE" | "SE" | "SSE" | "SSW" | "SW" | "WSW" | "WNW" | "NW" | "NNW" | "N"
               let positionOffset = 0
               if (compass === 'E' || compass === "NNE" || compass === "NE" || compass === "ENE" || compass === "ESE" || compass === "SE" || "SSE") {
+
                 console.log('number should be negative')
                 Listener.positionX.value = -distance + positionOffset
               } else if (compass === 'W' || compass === "SSW" || compass === "SW" || compass === "WSW" || compass === "WNW" || compass === "NW" || compass === "NNW") {
