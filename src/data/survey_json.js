@@ -3,7 +3,6 @@ export const json = {
     {
       name: "page1",
       elements: [
-        { type: "microphone", name: "Record" },
         {
           type: "panel",
           name: "panel2",
@@ -26,12 +25,7 @@ export const json = {
               title: "Calm",
               rateMax: 7,
             },
-            // {
-            //   type: "rating",
-            //   name: "question_builtup",
-            //   title: "Built up",
-            //   rateMax: 7,
-            // },
+   
             {
               type: "rating",
               name: "question_natural",
@@ -44,12 +38,7 @@ export const json = {
               title: "Biodiverse",
               rateMax: 7,
             },
-            // {
-            //   type: "rating",
-            //   name: "question_crowded",
-            //   title: "Crowded",
-            //   rateMax: 7,
-            // },
+
             {
               type: "rating",
               name: "question_Alone",

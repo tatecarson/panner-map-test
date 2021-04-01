@@ -58,9 +58,11 @@ const Home: React.FC = () => {
   const [chord, setChord] = useState(gamelanChord)
   const [average, setAverage] = useState(1)
   const [rustleAverage, setRustleAverage] = useState(1)
+  const [wavesAverage, setWavesAverage] = useState(1)
   const sampler: any = useRef(null);
   const sampler2: any = useRef(null)
   const leavesRuslting: any = useRef(null)
+  const waves: any = useRef(null)
   const wind: any = useRef(null);
   const event1: any = useRef(null)
   const event2: any = useRef(null)
@@ -95,16 +97,28 @@ const Home: React.FC = () => {
   }
 
   const handleOnComplete = async (result: any) => {
+    console.log(result.data)
     // whole survey average
     const surveyAverage = Nexus.average(Object.values(result.data));
+    // const surveyAverage = 6;
     setAverage(surveyAverage)
+    
 
-    // get average of first 3 questions
-    const firstThreeAverage = Nexus.average(Object.values(result.data).slice(0, 3))
-    setRustleAverage(firstThreeAverage)
+    // get average of quiet, tranquil, calm, natural, biodiverse 
+    setRustleAverage(Nexus.average(Object.values(result.data).slice(0, 5)))
+    // setRustleAverage(surveyAverage)
+
+    // alone, accessible,safe 
+    setWavesAverage(Nexus.average(Object.values(result.data).slice(6, 9)))
+    // setWavesAverage(surveyAverage)
+    // improve energy, concentrate, tension, become yourself
+
+
+
     // set new chord
     const pickChordbyAverage = Math.round(surveyAverage)
     setChord(chords[pickChordbyAverage])
+
     const density = Util.map(surveyAverage,
       1,
       7,
@@ -232,10 +246,20 @@ const Home: React.FC = () => {
     leavesRuslting.current = new Player("../assets/rustlingLeaves.mp3").connect(reverb.current)
     leavesRuslting.current.autostart = true;
     leavesRuslting.current.volume.value = -60;
+
+    // source - "Ambience, Seaside Waves, Close, A.wav" by InspectorJ (www.jshaw.co.uk) of Freesound.org
+    // https://freesound.org/people/InspectorJ/sounds/400632/
+    waves.current = new Player("../assets/waves.mp3").connect(reverb.current)
+    waves.current.autostart = true;
+    waves.current.volume.value = -60;
+
+
   }, [])
 
   // NOTE: this is in a separate useEffect so it can respond to the chord change
   // without refreshing the samples above 
+  // TODO: more testing of this
+  // also how do the volume changes here interact with the map panner below?
   useEffect(() => {
     console.log(seq1.rSeq.values)
     let windTriggered = false;
@@ -244,11 +268,7 @@ const Home: React.FC = () => {
       let freq = seq1.freqSeq.next();
 
       // round to a wt-tuning
-      // console.log("🚀 ~ file: Home.tsx ~ line 165 ~ event1 ~ chord", chord)
-      // console.log('chord in event1: ', chord)
       let transFreq = findClosest(chord, freq);
-
-      // console.log(`freq: ${freq} transFreq: ${transFreq}`);
 
       if (seq1.rSeq.next() > 2) {
         sampler.current.attack = Nexus.pick(0.5, 1, 1.5, 2, 2.5, 3);
@@ -258,19 +278,13 @@ const Home: React.FC = () => {
       }
 
       // trigger the wind all the time 
-
       if (!windTriggered) {
         wind.current.triggerAttack()
         console.log('wind trigger attack 1')
         windTriggered = true;
       }
 
-      console.log("probability: ", event1.current.probability)
-      if (event1.current.probability < 0.3) {
-        console.log('rustle avg: ', rustleAverage)
-        console.log('rustle vol: ', leavesRuslting.current.volume.value)
-        leavesRuslting.current.volume.rampTo(Nexus.pick(Nexus.scale(rustleAverage, 1, 7, -60, -3), -60), event1.current.interval)
-      }
+
 
       // Trigger the wind attack when the interval is fast but only once until the next release
       if (event1.current.interval < 3) {
@@ -284,29 +298,33 @@ const Home: React.FC = () => {
           Math.random() * 4000 + 500,
           event1.current.interval
         );
-
+        wind.current.volume.rampTo(Nexus.scale(average, 1, 7, -4, -7), event1.current.interval)
         // windTriggered = true;
       } else if (event1.current.interval > 3) {
         // slower intervals 
-        wind.current.volume.rampTo(-10, event1.current.interval)
-
+        wind.current.volume.rampTo(-12, event1.current.interval)
 
         console.log('wind release')
         windTriggered = false;
       }
-      wind.current.volume.value = Nexus.scale(average, 1, 7, -3, -7)
 
       // wind distortion 
-      pitchShift.current.wet.value = Nexus.scale(average, 1, 7, 1, 0)
-      pitchShift.current.pitch = Nexus.scale(average, 1, 7, 7, 1)
+      pitchShift.current.wet.value = Nexus.scale(average, 1, 7, 0.7, 0)
+      pitchShift.current.pitch = Nexus.scale(average, 1, 7, 6, 1)
 
       // this should change even if the wind hasn't released
       pitchShift.current.windowSize = Nexus.pick(0.1, 0.04, 0.05)
-      pitchShift.current.feedback.rampTo(Nexus.pick(0.2, 0.5), event1.current.interval)
+      pitchShift.current.feedback.rampTo(Nexus.pick(0.2, 0.4), event1.current.interval)
 
 
       // divide here so it doesn't break it
       sampler.current.triggerAttackRelease(transFreq / 2, seq1.durSeq.next(), time + wind.current.envelope.attack, seq1.vSeq.next());
+
+
+      // trigger background samples 
+
+      leavesRuslting.current.volume.rampTo(Nexus.pick(Nexus.scale(rustleAverage, 1, 7, -60, -3), -60), event1.current.interval)
+
 
       event1.current.interval = seq1.rSeq.next();
     })
@@ -349,13 +367,14 @@ const Home: React.FC = () => {
       }
 
       sampler2.current.triggerAttackRelease(transFreq, seq2.durSeq.next(), time, seq2.vSeq.next());
+      waves.current.volume.rampTo(Nexus.pick(Nexus.scale(wavesAverage, 1, 7, -60, -15), -60), event2.current.interval)
 
       event2.current.interval = seq2.rSeq.next();
     })
 
     event1.current.humanize = true;
     event2.current.humanize = true;
-  }, [chord, average, rustleAverage])
+  }, [chord, average, rustleAverage, wavesAverage])
 
   const [zoom, setZoom] = useState(15)
   return (
